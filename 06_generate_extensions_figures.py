@@ -1,3 +1,10 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Script: Generate supplementary figures for ablation, sensitivity, and robustness experiments.
+Reference: Table III (Ablation) and Table IV (Sensitivity & Robustness) in the paper.
+"""
+
 import os
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -6,31 +13,39 @@ import warnings
 
 warnings.filterwarnings('ignore')
 
+# Global plot settings
 sns.set_theme(style="ticks", context="paper", font_scale=1.4)
-plt.rcParams['font.sans-serif'] = ['DejaVu Sans', 'Arial']
+plt.rcParams['font.sans-serif'] = ['DejaVu Sans', 'Arial', 'Helvetica']
 plt.rcParams['axes.linewidth'] = 1.5
+plt.rcParams['pdf.fonttype'] = 42
 
 DIR_FIGURES = "results/figures"
 DIR_TABLES = "results/tables"
+os.makedirs(DIR_FIGURES, exist_ok=True)
 
-# 统一变体配色
+# Consistent variant palette
 VARIANT_PALETTE = {
-    'CPCE_Full': '#D62728',     # 战神红
-    'CPCE_NoDPC': '#BDBDBD',    # 浅灰
-    'CPCE_NoZipf': '#737373',   # 中灰
-    'CPCE_NoGS': '#1F77B4'      # 深蓝 (突显贪心算法的崩溃)
+    'CPCE_Full': '#D62728',     
+    'CPCE_NoDPC': '#BDBDBD',    
+    'CPCE_NoZipf': '#737373',   
+    'CPCE_NoGS': '#1F77B4'      
 }
 
 # ==========================================
-# 更新版 Figure 2: 加入 NoGS 的四大变体消融
+# Supplementary Plot: Updated Ablation (including NoGS)
 # ==========================================
 def plot_updated_ablation():
-    df = pd.read_csv(os.path.join(DIR_TABLES, "ablation_results.csv"))
+    print("Generating Supplementary Plot: Updated Ablation (with NoGS)...")
+    csv_path = os.path.join(DIR_TABLES, "ablation_results.csv")
+    if not os.path.exists(csv_path):
+        print(f"Notice: File not found {csv_path}")
+        return
+        
+    df = pd.read_csv(csv_path)
     df['Dataset'] = df['Dataset'].str.capitalize()
-    # 取出 4 个变体
+    
     df = df[df['Variant'].isin(['CPCE_Full', 'CPCE_NoDPC', 'CPCE_NoZipf', 'CPCE_NoGS'])]
     
-    # 设定画图的强制顺序
     variant_order = ['CPCE_Full', 'CPCE_NoDPC', 'CPCE_NoZipf', 'CPCE_NoGS']
     df['Variant'] = pd.Categorical(df['Variant'], categories=variant_order, ordered=True)
     
@@ -49,22 +64,28 @@ def plot_updated_ablation():
     for ax in g.axes.flat:
         ax.tick_params(axis='x', rotation=45)
         
-    plt.savefig(os.path.join(DIR_FIGURES, "Fig2_Ablation_Facet_Updated.pdf"), dpi=300)
+    save_path = os.path.join(DIR_FIGURES, "Supplementary_Ablation_Plot_Updated.pdf")
+    plt.savefig(save_path, dpi=300)
     plt.close()
-    print("✅ 更新版 Figure 2 (Ablation) 已保存。")
+    print(f"Successfully generated: {save_path}")
 
 # ==========================================
-# Figure 4: 参数敏感性折线图
+# Extended Results: Parameter Sensitivity
 # ==========================================
 def plot_sensitivity():
-    df = pd.read_csv(os.path.join(DIR_TABLES, "sensitivity_results.csv"))
+    print("Generating Extended Results Plot: Parameter Sensitivity...")
+    csv_path = os.path.join(DIR_TABLES, "sensitivity_results.csv")
+    if not os.path.exists(csv_path):
+        print(f"Notice: File not found {csv_path}")
+        return
+        
+    df = pd.read_csv(csv_path)
     
     df_T = df[df['Parameter'] == 'T']
     df_alpha = df[df['Parameter'] == 'alpha_max']
     
     fig, axes = plt.subplots(1, 2, figsize=(12, 5))
     
-    # 子图 1: T
     sns.lineplot(data=df_T, x='Value', y='Geo_F1', ax=axes[0], marker='o', markersize=8, color='#D62728', label='Geo_F1', linewidth=2.5)
     sns.lineplot(data=df_T, x='Value', y='ARI', ax=axes[0], marker='s', markersize=8, color='#08519C', label='ARI', linewidth=2.5)
     axes[0].set_title('Sensitivity to Ensemble Size ($T$)', fontweight='bold')
@@ -72,7 +93,6 @@ def plot_sensitivity():
     axes[0].set_ylabel('Score')
     axes[0].set_ylim(0, 1)
     
-    # 子图 2: alpha_max
     sns.lineplot(data=df_alpha, x='Value', y='Geo_F1', ax=axes[1], marker='o', markersize=8, color='#D62728', label='Geo_F1', linewidth=2.5)
     sns.lineplot(data=df_alpha, x='Value', y='ARI', ax=axes[1], marker='s', markersize=8, color='#08519C', label='ARI', linewidth=2.5)
     axes[1].set_title('Sensitivity to Zipf Exponent ($\\alpha_{max}$)', fontweight='bold')
@@ -82,22 +102,25 @@ def plot_sensitivity():
     
     sns.despine()
     plt.tight_layout()
-    plt.savefig(os.path.join(DIR_FIGURES, "Fig4_Parameter_Sensitivity.pdf"), dpi=300)
+    save_path = os.path.join(DIR_FIGURES, "Extended_Results_for_Table_IV_Sensitivity.pdf")
+    plt.savefig(save_path, dpi=300)
     plt.close()
-    print("✅ Figure 4 (Sensitivity) 已保存。")
+    print(f"Successfully generated: {save_path}")
 
 # ==========================================
-# Figure 5: 细胞下采样抗噪鲁棒性
+# Extended Results: Noise Robustness (Subsampling)
 # ==========================================
 def plot_robustness():
-    df = pd.read_csv(os.path.join(DIR_TABLES, "robustness_results.csv"))
-    
-    # 确保 100% 比例作为基准线存在 (我们可以从主表中借用，或者就只展示 0.5, 0.7, 0.9)
-    # 为图表直观，我们这里直接画下采样折线
+    print("Generating Extended Results Plot: Noise Robustness...")
+    csv_path = os.path.join(DIR_TABLES, "robustness_results.csv")
+    if not os.path.exists(csv_path):
+        print(f"Notice: File not found {csv_path}")
+        return
+        
+    df = pd.read_csv(csv_path)
     
     fig, axes = plt.subplots(1, 2, figsize=(12, 5))
     
-    # Geo_F1 对比
     sns.lineplot(data=df, x='Ratio', y='Geo_F1', hue='Algorithm', palette={'CPCE': '#D62728', 'KMeans': '#9ECAE1'},
                  marker='D', markersize=10, linewidth=3, ax=axes[0])
     axes[0].set_title('Robustness of Rare Cell Protection', fontweight='bold')
@@ -106,7 +129,6 @@ def plot_robustness():
     axes[0].set_xlim(0.45, 0.95)
     axes[0].set_xticks([0.5, 0.7, 0.9])
     
-    # ARI 对比
     sns.lineplot(data=df, x='Ratio', y='ARI', hue='Algorithm', palette={'CPCE': '#D62728', 'KMeans': '#9ECAE1'},
                  marker='D', markersize=10, linewidth=3, ax=axes[1])
     axes[1].set_title('Robustness of Global Topology', fontweight='bold')
@@ -117,11 +139,14 @@ def plot_robustness():
     
     sns.despine()
     plt.tight_layout()
-    plt.savefig(os.path.join(DIR_FIGURES, "Fig5_Noise_Robustness.pdf"), dpi=300)
+    save_path = os.path.join(DIR_FIGURES, "Extended_Results_for_Table_IV_Robustness.pdf")
+    plt.savefig(save_path, dpi=300)
     plt.close()
-    print("✅ Figure 5 (Robustness) 已保存。")
+    print(f"Successfully generated: {save_path}")
 
 if __name__ == "__main__":
+    print("Starting Extension Figures Generation Pipeline...")
     plot_updated_ablation()
     plot_sensitivity()
     plot_robustness()
+    print("Pipeline execution completed.")

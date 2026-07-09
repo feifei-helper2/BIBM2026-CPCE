@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-消融实验总线：验证 CPCE 核心机制的有效性
-仅抽取三个代表性极端数据集，验证四种变体，原子级落盘。
+Script: Ablation Study Orchestrator
+Purpose: Validate the effectiveness of CPCE core mechanisms across extreme datasets.
 """
 
 import os
@@ -14,7 +14,7 @@ import pandas as pd
 import scanpy as sc
 from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score
 
-# 强制单线程防死锁
+# Force single threading to prevent deadlocks
 os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["NUMEXPR_NUM_THREADS"] = "1"
 os.environ["OMP_NUM_THREADS"] = "1"
@@ -27,11 +27,11 @@ from src.cpce_engine import run_synthesized_cpce
 from src.metrics import calc_rare_class_f1_strict
 
 # ==========================================
-# 1. 配置与物理路径隔离
+# 1. Configuration and Path Setup
 # ==========================================
 DIR_DATA = os.path.join(PROJECT_ROOT, "data", "processed")
 DIR_TABLES = os.path.join(PROJECT_ROOT, "results", "tables")
-DIR_LABELS = os.path.join(PROJECT_ROOT, "results", "saved_labels_ablation") # 消融专用缓存
+DIR_LABELS = os.path.join(PROJECT_ROOT, "results", "saved_labels_ablation")
 
 os.makedirs(DIR_LABELS, exist_ok=True)
 os.makedirs(DIR_TABLES, exist_ok=True)
@@ -41,19 +41,19 @@ RARE_THRESHOLD = 0.05
 RUNS = 10 
 BASE_SEED = 42
 
-# 物理文件到论文展示名的安全映射字典
+# Mapping physical files to paper display names
 DATASET_MAPPING = {
-    "output3": "Dataset_2",  # 467倍失衡
-    "output7": "Dataset_4",  # 稀有类最多
-    "output18": "Dataset_7"  # 地狱级兜底
+    "output3": "Dataset_2",  
+    "output7": "Dataset_4",  
+    "output18": "Dataset_7"  
 }
 
-# 变体配置
+# Core Ablation Variants (NoGS integrated, avg_link removed)
 VARIANT_MAPPING = {
     'full': 'CPCE_Full',
     'no_dpc': 'CPCE_NoDPC',
     'no_zipf': 'CPCE_NoZipf',
-    'avg_link': 'CPCE_AvgLink'
+    'no_gs': 'CPCE_NoGS'
 }
 
 def append_result(record, csv_path):
@@ -63,24 +63,24 @@ def append_result(record, csv_path):
 
 def main():
     logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
-    logging.info("🧪 ============ CPCE 核心护城河消融实验启动 ============")
+    logging.info("Starting CPCE Core Mechanism Ablation Study...")
 
     completed = set()
     if os.path.exists(OUTPUT_CSV):
         try:
             df = pd.read_csv(OUTPUT_CSV)
             completed = set(zip(df['Dataset'], df['Variant'], df['Run']))
-            logging.info(f"📌 检测到 {len(completed)} 条历史记录，激活增量断点续传。")
+            logging.info(f"Detected {len(completed)} historical records. Activating incremental resume mode.")
         except Exception:
             pass
 
     for raw_name, paper_name in DATASET_MAPPING.items():
         file_path = os.path.join(DIR_DATA, f"{raw_name}.h5ad")
         if not os.path.exists(file_path):
-            logging.error(f"❌ 数据集缺失: {file_path}")
+            logging.error(f"Error: Dataset missing: {file_path}")
             continue
             
-        logging.info(f"\n📂 挂载数据: {paper_name} (Source: {raw_name})")
+        logging.info(f"\nLoading dataset: {paper_name} (Source: {raw_name})")
         adata = sc.read_h5ad(file_path)
         X_pca = adata.obsm['X_pca']
         y_true = adata.obs['ground_truth'].values
@@ -95,7 +95,7 @@ def main():
                 if task_key in completed:
                     continue
                     
-                logging.info(f"   ⚙️ 运算中: {paper_v} (Run {run_idx+1}/{RUNS}) ...")
+                logging.info(f"   Processing: {paper_v} (Run {run_idx+1}/{RUNS}) ...")
                 
                 label_path = os.path.join(DIR_LABELS, f"{raw_name}_{internal_v}_run{run_idx}.npy")
                 time_used = np.nan
@@ -114,10 +114,10 @@ def main():
                     metrics = calc_rare_class_f1_strict(y_true, labels_pred, RARE_THRESHOLD)
                     
                     status = "Success"
-                    logging.info(f"      ✅ 完成 | ARI: {ari:.3f} | Geo_F1: {metrics['Soft_Geo_Rare_F1']:.3f} | Det: {metrics['Detection_Rate']:.2f}")
+                    logging.info(f"      Success | ARI: {ari:.3f} | Geo_F1: {metrics['Soft_Geo_Rare_F1']:.3f} | Det: {metrics['Detection_Rate']:.2f}")
                     
                 except Exception as e:
-                    logging.error(f"      ❌ 异常崩溃: {e}")
+                    logging.error(f"      Failed: {e}")
                     ari, nmi = np.nan, np.nan
                     metrics = {"Mean_Rare_F1": np.nan, "Soft_Geo_Rare_F1": np.nan, "Detection_Rate": np.nan}
                     status = "Failed"
@@ -138,7 +138,7 @@ def main():
                 
                 append_result(record, OUTPUT_CSV)
 
-    logging.info(f"\n🎉 消融跑批完结！资产大表已落地: {OUTPUT_CSV}")
+    logging.info(f"\nAblation batch completed! Results saved to: {OUTPUT_CSV}")
 
 if __name__ == "__main__":
     import warnings

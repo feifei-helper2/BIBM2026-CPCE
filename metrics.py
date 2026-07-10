@@ -1,12 +1,18 @@
+# -*- coding: utf-8 -*-
+"""
+File: src/metrics.py
+Purpose: Strict evaluation metrics for rare cell discovery, avoiding the ARI trap.
+"""
+
 import numpy as np
 import pandas as pd
 from scipy.optimize import linear_sum_assignment
 
 def calc_rare_class_f1_strict(y_true, y_pred, rare_threshold_ratio=0.05):
     """
-    引入全局排他匹配的严苛 F1 评测 + 多维度抗辩指标。
-    强制真实簇与预测簇 1对1 映射，彻底刺穿大类吞噬假象。
-    返回包含 Mean, Geo, Detection Rate 等多维指标的字典。
+    Strict F1 evaluation with global exclusive matching + multi-dimensional robustness metrics.
+    Forces 1-to-1 mapping between true and predicted clusters to eliminate the majority-domination artifact.
+    Returns a dictionary containing Mean, Geometric Mean, Detection Rate, etc.
     """
     y_true = np.array(y_true)
     y_pred = np.array(y_pred)
@@ -21,12 +27,12 @@ def calc_rare_class_f1_strict(y_true, y_pred, rare_threshold_ratio=0.05):
         return {"Mean_Rare_F1": np.nan, "Soft_Geo_Rare_F1": np.nan, 
                 "Detection_Rate": np.nan, "Median_Rare_F1": np.nan, "Q1_Rare_F1": np.nan}
         
-    # 1. 使用 crosstab 规避混型扩容灾难
+    # 1. Use crosstab to avoid mixed-type broadcasting issues
     cross_tab = pd.crosstab(y_true, y_pred)
     cm = cross_tab.values
     row_labels = cross_tab.index.values 
     
-    # 2. 构建代价矩阵：以 -F1 为权重进行全局寻优
+    # 2. Construct cost matrix: use -F1 as weights for global optimization
     cost_matrix = np.zeros(cm.shape)
     for i in range(cm.shape[0]):
         actual_positives = np.sum(cm[i, :])
@@ -47,10 +53,10 @@ def calc_rare_class_f1_strict(y_true, y_pred, rare_threshold_ratio=0.05):
                 
             cost_matrix[i, j] = -f1  
             
-    # 3. 严守学术金标准：匈牙利全局最大权匹配
+    # 3. Academic gold standard: Hungarian algorithm for global maximum weight matching
     row_ind, col_ind = linear_sum_assignment(cost_matrix)
     
-    # 初始化所有稀有类分数为0，防范由于预测簇数量不足导致未被分配的稀有类被漏算
+    # Initialize all rare class scores to 0 to prevent unassigned rare classes from being missed
     rare_f1_dict = {cls: 0.0 for cls in rare_classes}
     
     for row, col in zip(row_ind, col_ind):
@@ -59,29 +65,28 @@ def calc_rare_class_f1_strict(y_true, y_pred, rare_threshold_ratio=0.05):
             f1_score = -cost_matrix[row, col]
             rare_f1_dict[true_label] = f1_score
             
-    # 获取一维分数数组
+    # Extract 1D score array
     rare_f1_scores = np.array(list(rare_f1_dict.values()))
 
     # ==========================================
-    # 4. 🌟 挂载多维度罕见类评估引擎 (抗辩指标)
+    # 4. Execute multi-dimensional rare class evaluation engine
     # ==========================================
     
-    # 传统算术平均 (用于兜底对比)
+    # Standard arithmetic mean (for baseline comparison)
     mean_rare_f1 = np.mean(rare_f1_scores)
     
-    # Soft Geometric Mean (平滑因子退火至 0.05) - 惩罚基线算法的全盲现象
+    # Soft Geometric Mean (smoothing factor 0.05) - penalizes baselines that completely eradicate any rare class
     soft_epsilon = 0.05
     geometric_rare_f1 = np.exp(np.mean(np.log(rare_f1_scores + soft_epsilon))) - soft_epsilon
     geometric_rare_f1 = max(0.0, geometric_rare_f1)
     
-    # 罕见类检出率 (Detection Rate) - 只要大于 0.05 即认为捕获
+    # Rare class detection rate - considered captured if score > 0.05
     detection_rate = np.sum(rare_f1_scores > 0.05) / len(rare_f1_scores)
     
-    # 稳健性分位数防御
+    # Robustness quantile defense
     median_rare_f1 = np.median(rare_f1_scores)
     q1_rare_f1 = np.percentile(rare_f1_scores, 25)
     
-    # 将多维度指标打包返回
     return {
         "Mean_Rare_F1": mean_rare_f1,
         "Soft_Geo_Rare_F1": geometric_rare_f1,

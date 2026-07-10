@@ -1,3 +1,8 @@
+# -*- coding: utf-8 -*-
+"""
+File: src/data_pipeline.py
+Purpose: Data preprocessing and quality control pipeline for highly imbalanced datasets.
+"""
 import scanpy as sc
 import numpy as np
 import scipy.sparse as sp
@@ -15,23 +20,23 @@ class DataPipeline:
         self.K = None
         
     def _print_report(self, title, adata, label_col=None):
-        """物理信息探针与体检报告生成器"""
+        """Generates physical diagnostics and validation reports for the dataset."""
         print(f"\n{'='*20} {title} {'='*20}")
-        print(f"📌 数据概览:")
-        print(f"  - 细胞数 (Observations): {adata.n_obs}")
-        print(f"  - 基因数 (Variables): {adata.n_vars}")
+        print(f"[Data Overview]")
+        print(f"  - Cells (Observations): {adata.n_obs}")
+        print(f"  - Genes (Variables): {adata.n_vars}")
         
         X_data = adata.X.data if sp.issparse(adata.X) else adata.X
         is_sparse = sp.issparse(adata.X)
-        print(f"  - 矩阵类型: {'Sparse (稀疏)' if is_sparse else 'Dense (密集)'}")
+        print(f"  - Matrix Type: {'Sparse' if is_sparse else 'Dense'}")
         if is_sparse:
-             print(f"  - 稀疏度: {1.0 - adata.X.nnz / (adata.n_obs * adata.n_vars):.4f}")
+             print(f"  - Sparsity Ratio: {1.0 - adata.X.nnz / (adata.n_obs * adata.n_vars):.4f}")
         
         min_val = np.min(X_data) if X_data.size > 0 else 0
         max_val = np.max(X_data) if X_data.size > 0 else 0
         is_logged = max_val < 100
         is_scaled = min_val < 0
-        print(f"  - 矩阵状态嗅探: {'包含负数 (Scaled)' if is_scaled else ('已对数化 (Logged)' if is_logged else '原始计数 (Raw Counts)')}")
+        print(f"  - Value Distribution: {'Contains negative values (Scaled)' if is_scaled else ('Log-transformed' if is_logged else 'Raw Counts')}")
         
         if label_col and label_col in adata.obs:
              counts = adata.obs[label_col].value_counts()
@@ -39,40 +44,40 @@ class DataPipeline:
              imbalance_ratio = counts.max() / counts.min() if counts.min() > 0 else float('inf')
              rare_classes = counts[counts / adata.n_obs <= 0.05]
              
-             print(f"\n📊 标签统计 (基于 '{label_col}'):")
-             print(f"  - 类别数 K: {K}")
-             print(f"  - 最大/最小类失衡比: {imbalance_ratio:.2f} 倍")
-             print(f"  - 极稀有类数量 (<=5%): {len(rare_classes)}")
+             print(f"\n[Label Statistics based on '{label_col}']")
+             print(f"  - Cluster Count (K): {K}")
+             print(f"  - Max/Min Class Imbalance Ratio: {imbalance_ratio:.2f}x")
+             print(f"  - Extremely Rare Classes (<=5%): {len(rare_classes)}")
              if len(rare_classes) > 0:
-                 print(f"  - 极稀有类明细: \n{rare_classes.to_string()}")
+                 print(f"  - Rare Class Breakdown: \n{rare_classes.to_string()}")
              
         print("="*60)
 
     def run(self):
         if not os.path.exists(self.input_path):
-            print(f"❌ 致命错误：未找到输入文件 {self.input_path}")
+            print(f"Error: Input file not found {self.input_path}")
             return False
 
-        print(f"🚀 开始加载数据: {self.input_path}")
+        print(f"Loading data from: {self.input_path}")
         self.adata = sc.read_h5ad(self.input_path)
         
-        # 1. 真实标签列锁定
+        # 1. Identify Ground Truth column
         obs_keys = self.adata.obs.keys()
         label_col = next((col for col in ['author_cell_type', 'cell_type_original', 'cell_type'] if col in obs_keys), None)
         
         if not label_col:
-            print("❌ 致命错误：未找到有效的细胞标签列。")
+            print("Error: Valid cell label column not found in observation metadata.")
             return False
             
-        self._print_report("原版数据状态报告", self.adata, label_col)
-        print("\n⚙️ 开始执行清洗与长尾免疫处理...")
+        self._print_report("Original Dataset Status", self.adata, label_col)
+        print("\nExecuting preprocessing and long-tail validation...")
         
-        # 2. 密集矩阵强制防御
+        # 2. Dense Matrix Protection
         if not sp.issparse(self.adata.X):
-             print("  -> 警告：检测到密集矩阵，正强制转换为 CSR 稀疏矩阵...")
+             print("  -> Warning: Dense matrix detected. Forcing conversion to CSR sparse format...")
              self.adata.X = sp.csr_matrix(self.adata.X)
              
-        # 3. 标签清洗与孤立类清除
+        # 3. Label cleaning and isolation removal
         valid_cells = self.adata.obs[label_col].notna() & ~self.adata.obs[label_col].astype(str).str.contains("unknown|unassigned", case=False)
         self.adata = self.adata[valid_cells].copy() 
         if self.adata.obs[label_col].dtype.name == 'category':
@@ -83,22 +88,22 @@ class DataPipeline:
         imbalance_ratio = counts.max() / counts.min()
         rare_classes = counts[counts / self.adata.n_obs <= 0.05]
 
-        # 4. 长尾物理特征断言
+        # 4. Long-tail feature assertion
         if self.K < 3 or self.K > 20:
-            print(f"❌ 淘汰：类别数 {self.K} 不合规 (实验设计需 3~20)。")
+            print(f"Validation Failed: Cluster count ({self.K}) must be between 3 and 20.")
             return False
         if imbalance_ratio < 3.0:
-            print(f"❌ 淘汰：失衡比 {imbalance_ratio:.1f} 倍过低，长尾特征不明显。")
+            print(f"Validation Failed: Imbalance ratio ({imbalance_ratio:.1f}x) is too low for rare cell evaluation.")
             return False
         if len(rare_classes) < 1:
-            print("❌ 淘汰：毫无极端稀有类别，无法使用 F1 严苛评测体系。")
+            print("Validation Failed: No rare classes detected (<=5%). Unsuitable for strict F1 evaluation.")
             return False
             
         self.adata.obs['ground_truth'] = self.adata.obs[label_col].astype('category')
 
-        # 5. 底层解包：防止维度撕裂、死者苏醒与可视化资产丢失
+        # 5. Raw component extraction: Restore raw attributes if present in adata.raw
         if self.adata.raw is not None:
-             print("  -> 探测到 adata.raw 备份，正解包恢复全量原始基因空间...")
+             print("  -> Detected adata.raw backup. Restoring full original gene space...")
              
              saved_obs = self.adata.obs.copy() 
              saved_obsm = self.adata.obsm.copy()
@@ -119,7 +124,7 @@ class DataPipeline:
              if not sp.issparse(self.adata.X):
                  self.adata.X = sp.csr_matrix(self.adata.X)
 
-        # 6. 数据状态探测与备份
+        # 6. Data status detection and layer backup
         X_data = self.adata.X.data if sp.issparse(self.adata.X) else self.adata.X
         is_scaled = np.min(X_data) < 0
         is_integer = np.allclose(X_data, X_data.astype(int)) if len(X_data) > 0 else False
@@ -133,7 +138,7 @@ class DataPipeline:
             else:
                 self.adata.layers["raw_counts"] = self.adata.X.copy()
 
-        # 7 & 8. 融合重构：严格遵守 HVG 算法的数据分布前置要求
+        # 7 & 8. HVG distribution alignment processing
         has_raw_counts = False
         if 'raw_counts' in self.adata.layers:
             layer_data = self.adata.layers['raw_counts'].data if sp.issparse(self.adata.layers['raw_counts']) else self.adata.layers['raw_counts']
@@ -142,41 +147,40 @@ class DataPipeline:
 
         if self.adata.n_vars > 4500:
             if has_raw_counts:
-                print("  -> 启动泊松建模 (seurat_v3) 提取稀有特征 (基于原始整数矩阵)...")
+                print("  -> Running Poisson modeling (seurat_v3) to extract highly variable features...")
                 self.adata.X = self.adata.layers["raw_counts"].copy()
                 sc.pp.filter_genes(self.adata, min_cells=1)
-                # seurat_v3 必须在 Log 之前执行
+                # seurat_v3 must be executed prior to log transformation
                 sc.pp.highly_variable_genes(self.adata, n_top_genes=4000, flavor='seurat_v3', subset=False)
                 
-                print("  -> 打标完成，执行全基因组级归一化与对数化...")
+                print("  -> HVG extraction complete. Executing global normalization and log transformation...")
                 self.adata.X = self.adata.X.astype(np.float32) 
                 sc.pp.normalize_total(self.adata, target_sum=1e4)
                 sc.pp.log1p(self.adata)
             else:
                 if not is_logged:
-                    print("  -> 缺失整数矩阵，强制先行执行归一化与对数化...")
+                    print("  -> Raw integer matrix absent. Forcing normalization and log transformation...")
                     self.adata.X = self.adata.X.astype(np.float32) 
                     sc.pp.normalize_total(self.adata, target_sum=1e4)
                     sc.pp.log1p(self.adata)
                     is_logged = True  
                 
-                print("  -> 强制扩容常规特征池至 4500 保护长尾 (基于 Log 化矩阵)...")
-                # seurat 必须在 Log 之后执行
+                print("  -> Expanding feature pool to 4500 to protect long-tail distribution (using standard seurat)...")
                 sc.pp.highly_variable_genes(self.adata, n_top_genes=4500, flavor='seurat', subset=False)
         else:
             if not is_logged:
-                print("  -> 无需 HVG 打标，直接执行全基因组级归一化与对数化...")
+                print("  -> Bypassing HVG selection. Executing global normalization and log transformation...")
                 self.adata.X = self.adata.X.astype(np.float32) 
                 sc.pp.normalize_total(self.adata, target_sum=1e4)
                 sc.pp.log1p(self.adata)
              
-        # 9. 基于 HVG 动态切片的 PCA
-        print("  -> 计算核心降维矩阵 (X_pca)...")
+        # 9. PCA reduction based on HVG
+        print("  -> Computing core Principal Component Analysis (X_pca)...")
         has_hvg = 'highly_variable' in self.adata.var.columns
         sc.tl.pca(self.adata, n_comps=50, use_highly_variable=has_hvg, random_state=42)
         X_cpce_input = self.adata.obsm['X_pca'][:, :50]
         
-        # 10. 标准件物理组装
+        # 10. Construct standardized processed output
         clean_adata = sc.AnnData(
             X=self.adata.X, 
             obs=self.adata.obs[['ground_truth']].copy(),
@@ -186,7 +190,7 @@ class DataPipeline:
         clean_adata.obsm['X_pca'] = X_cpce_input 
         clean_adata.uns['n_clusters_gt'] = int(self.K) 
         
-        # 11. 可视化流形资产管理
+        # 11. Visual Manifold Assets Management
         has_vis = False
         for key in ['X_umap', 'X_tsne', 'X_draw_graph_fa']:
              if key in self.adata.obsm:
@@ -195,20 +199,20 @@ class DataPipeline:
                  break
                  
         if not has_vis:
-            print("  -> 未发现有效可视化坐标，正在即时计算 UMAP...")
+            print("  -> Valid visual coordinates not found. Generating UMAP locally...")
             sc.pp.neighbors(clean_adata, use_rep='X_pca', random_state=42)
             sc.tl.umap(clean_adata, random_state=42)
             
-        self._print_report("清洗后标准件状态报告", clean_adata, label_col='ground_truth')
+        self._print_report("Processed Dataset Status", clean_adata, label_col='ground_truth')
         
         clean_adata.write_h5ad(self.output_path)
-        print(f"🎉 成功！已生成标准化就绪文件: {self.output_path}")
+        print(f"Success! Standardized dataset saved to: {self.output_path}")
         return True
 
 if __name__ == "__main__":
-    # 配置数据路径
-    INPUT_FILE = "input1.h5ad" 
-    OUTPUT_FILE = "output1.h5ad"
+    # Updated paths targeting Dataset 7
+    INPUT_FILE = "data/raw/dataset_7_raw.h5ad" 
+    OUTPUT_FILE = "data/processed/dataset_7.h5ad"
     
     pipeline = DataPipeline(INPUT_FILE, OUTPUT_FILE)
     pipeline.run()

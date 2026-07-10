@@ -21,9 +21,9 @@ Your directory structure should look like this before running:
   
 Plaintext  
 ├── data/  
-│   └── processed/  
-│       ├── dataset_5.h5ad  
-│       └── dataset_7.h5ad  
+│     └── processed/  
+│           ├── dataset_5.h5ad  
+│           └── dataset_7.h5ad  
 ├── scripts/  
 ├── src/  
 └── requirements.txt  

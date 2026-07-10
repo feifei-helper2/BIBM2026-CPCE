@@ -1,4 +1,4 @@
-
+# -*- coding: utf-8 -*-
 import scanpy as sc
 import numpy as np
 import networkx as nx
@@ -10,12 +10,10 @@ from scipy.spatial.distance import pdist, squareform
 from tqdm import tqdm
 import warnings
 import time
-# from utils_functions import *
 
 def normalize(adata, filter_min_counts=True, size_factors=True, normalize_input=False, logtrans_input=True):
     if filter_min_counts:
         sc.pp.filter_genes(adata, min_cells=3)
-#         sc.pp.filter_cells(adata, min_genes=200)
     if size_factors or normalize_input or logtrans_input:
         adata.raw = adata.copy()
     if size_factors:
@@ -30,8 +28,6 @@ def normalize(adata, filter_min_counts=True, size_factors=True, normalize_input=
     return adata
 
 def fast_clustering(data, k=15, seed=2023):
-    # scaler = StandardScaler()
-    # data = scaler.fit_transform(data)
     nps = min(40, data.shape[0])
     if data.shape[0] >= nps:
         pca = PCA(n_components=nps, random_state=seed)
@@ -67,7 +63,7 @@ def scCAD(data,
           merge_h=50,
           overlap_h=0.7,
           rare_h=0.01,
-          save_full=True,
+          save_full=False, # Modified to False to prevent garbage file generation
           save_path='./'):
     """
     Parameters
@@ -102,7 +98,7 @@ def scCAD(data,
         Rare threshold to use when doing cluster decomposition. (default: 0.01)
 
     save_full : boolean
-        Whether the full result needs to be saved. (default: True)
+        Whether the full result needs to be saved. (default: False)
 
     save_path : string
         Path to save results.
@@ -196,15 +192,15 @@ def scCAD(data,
     while 1:
         print(">>> iter %d, running..." % count)
         count = count + 1
-        dict = Counter(pseudo_subclusters)
+        dict_count = Counter(pseudo_subclusters)
         depths = {}
         dpt = 1
-        while dict.most_common(1)[0][1] >= h1:
+        while dict_count.most_common(1)[0][1] >= h1:
             depths.update(
-                (key, dpt) for key in list(set([i for i, count in dict.items() if count < h1]) - set(depths.keys())))
+                (key, dpt) for key in list(set([i for i, count in dict_count.items() if count < h1]) - set(depths.keys())))
             dpt = dpt + 1
             c_max = max(pseudo_subclusters) + 1
-            c_list = list(set([i for i, count in dict.items() if count >= h1]) - set(depths.keys()))
+            c_list = list(set([i for i, count in dict_count.items() if count >= h1]) - set(depths.keys()))
             if len(c_list) == 0:
                 break
             for clustid in c_list:
@@ -217,7 +213,7 @@ def scCAD(data,
                     c_max = max(pseudo_subclusters) + 1
                 else:
                     depths[clustid] = dpt - 1
-            dict = Counter(pseudo_subclusters)
+            dict_count = Counter(pseudo_subclusters)
 
         subc_dict = {}
         p = 0
@@ -236,8 +232,8 @@ def scCAD(data,
         print(">>> Clusters merge in progress...")
         X_centers = np.zeros((len(np.unique(rename_pseudo_subclusters)), X_norm.shape[1]))
         for i in np.unique(rename_pseudo_subclusters):
-            id = np.where(rename_pseudo_subclusters == i)[0]
-            X_centers[i, :] = np.mean(X_norm[id, :], axis=0)
+            id_idx = np.where(rename_pseudo_subclusters == i)[0]
+            X_centers[i, :] = np.mean(X_norm[id_idx, :], axis=0)
 
         distances = pdist(X_centers)
         distance_matrix = squareform(distances)
@@ -288,24 +284,24 @@ def scCAD(data,
         overlap = []
         degs_list = []
         for i in tqdm(range(n_subclusters)):
-            id = np.where(rename_comb_subclusters == i)[0]
-            if len(id) > h1 or len(id) < 10:
+            id_idx = np.where(rename_comb_subclusters == i)[0]
+            if len(id_idx) > h1 or len(id_idx) < 10:
                 overlap.append(0)
                 degs_list.append([])
             else:
                 id_ = np.where(rename_comb_subclusters != i)[0]
-                tmp_X = X_norm[id, :]
+                tmp_X = X_norm[id_idx, :]
                 zero_cols = np.where(np.all(tmp_X == 0, axis=0))[0]
                 re_cols = list(set(np.arange(X_norm.shape[1])) - set(zero_cols))
                 tmp_X = X_norm[:, re_cols]
-                diff = np.abs(np.median(tmp_X[id, :], axis=0) - np.median(tmp_X[id_, :], axis=0))
+                diff = np.abs(np.median(tmp_X[id_idx, :], axis=0) - np.median(tmp_X[id_, :], axis=0))
                 var_names = np.array(sg)[re_cols]
                 n_top = min(20, len(np.where(diff > 0)[0]))
                 degs_ = list(var_names[np.argsort(-diff)[:n_top]])
                 degs_list.append(degs_)
                 IFmodel.fit(adata[:, degs_].X)
                 s = IFmodel.score_samples(adata[:, degs_].X)
-                overlap.append(len(set(np.argsort(s)[:len(id)]) & set(id)) / len(id))
+                overlap.append(len(set(np.argsort(s)[:len(id_idx)]) & set(id_idx)) / len(id_idx))
 
         remain_clusters = []
         overlap = np.array(overlap)
@@ -335,18 +331,17 @@ def scCAD(data,
     # 6 Output results
     result = []
     for i in remain_clusters:
-        id = np.where(rename_comb_subclusters == i)[0]
+        id_idx = np.where(rename_comb_subclusters == i)[0]
         if cellNames is None:
-            result.append(list(id))
+            result.append(list(id_idx))
         else:
-            result.append(list(cellNames[id]))
+            result.append(list(cellNames[id_idx]))
 
     if save_full:
         np.savetxt(save_path + dataName + '_scCAD_balanced_sub-clusters.txt', rename_pseudo_subclusters, fmt='%d')
         np.savetxt(save_path + dataName + '_scCAD_comb_sub-clusters.txt', rename_comb_subclusters, fmt='%d')
         np.savetxt(save_path + dataName + '_scCAD_sub-clusters_anomaly_score.txt', overlap, fmt='%f')
-
-    write_list_to_file(result, save_path + dataName + '_scCAD_rare_cells_result.txt')
-    write_list_to_file(remain_degs_list, save_path + dataName + '_scCAD_degs_list.txt')
+        write_list_to_file(result, save_path + dataName + '_scCAD_rare_cells_result.txt')
+        write_list_to_file(remain_degs_list, save_path + dataName + '_scCAD_degs_list.txt')
 
     return result, overlap, rename_comb_subclusters, remain_degs_list

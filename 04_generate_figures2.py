@@ -39,12 +39,6 @@ DIR_FIGURES = "results/figures"
 DIR_TABLES = "results/tables"
 os.makedirs(DIR_FIGURES, exist_ok=True)
 
-GLOBAL_MAPPING = {
-    "output1": "dataset_1", "output3": "dataset_2", "output4": "dataset_3",
-    "output7": "dataset_4", "output8": "dataset_5", "output11": "dataset_6",
-    "output18": "dataset_7"
-}
-
 # ==========================================
 # Supplementary Plot: Ablation Study (Corresponding to Table III)
 # ==========================================
@@ -169,8 +163,6 @@ def main():
             rename_dict['Detection_Rate'] = 'Det_Rate'
         if rename_dict:
             df_main = df_main.rename(columns=rename_dict)
-            
-        df_main['Dataset'] = df_main['Dataset'].replace(GLOBAL_MAPPING)
         
         plot_fig2_quadrant_scatter(df_main)
         generate_supp_table(df_main)

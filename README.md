@@ -13,9 +13,7 @@ Please download them from the following links:
 Dataset 5 (Healthy Small Intestine):https://datasets.cellxgene.cziscience.com/674a4e43-a99a-4a76-8f23-a63e3e85933a.h5ad  
 Dataset 7 (Living Donor Kidney):https://datasets.cellxgene.cziscience.com/a305d1c6-2e04-42af-8643-ff300cfafacf.h5ad  
   
-**Important:** After downloading, place both `.h5ad` files into the `data/processed/` directory in the project root and explicitly rename them to `dataset_5.h5ad` and `dataset_7.h5ad`.  
-  
-Important: After downloading, place the .h5ad file into a directory named data/ in the project root and rename it to dataset_1.h5ad.  
+Important: After downloading, place both `.h5ad` files into the `data/processed/` directory in the project root and explicitly rename them to `dataset_5.h5ad` and `dataset_7.h5ad`.  
   
 Your directory structure should look like this before running:  
   

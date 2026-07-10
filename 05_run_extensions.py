@@ -38,9 +38,9 @@ def main():
     sens_csv = os.path.join(DIR_TABLES, "sensitivity_results.csv")
     rob_csv = os.path.join(DIR_TABLES, "robustness_results.csv")
     
-    # Load dataset_4 (output7) for sensitivity and robustness tests
-    print("\nLoading dataset_4 (output7) for sensitivity and robustness tests...")
-    data_path = os.path.join(DIR_DATA, "output7.h5ad")
+    # Load dataset_7 for sensitivity and robustness tests
+    print("\nLoading dataset_7 for sensitivity and robustness tests...")
+    data_path = os.path.join(DIR_DATA, "dataset_7.h5ad")
     if not os.path.exists(data_path):
         print(f"Error: Dataset missing: {data_path}")
         return

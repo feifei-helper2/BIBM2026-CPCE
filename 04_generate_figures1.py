@@ -29,15 +29,15 @@ def main():
     print("Starting Biological Case Study: Dataset 7 (Living Donor Kidney) - Mesangial Cells")
     
     # 1. Load core data and labels
-    data_path = os.path.join(DIR_DATA, "output18.h5ad")
+    data_path = os.path.join(DIR_DATA, "dataset_7.h5ad")
     if not os.path.exists(data_path):
         print(f"Error: Dataset not found at {data_path}. Please ensure Dataset 7 is downloaded.")
         return
         
     adata = sc.read_h5ad(data_path)
     
-    cpce_path = os.path.join(DIR_LABELS, "output18_CPCE_run0.npy")
-    leiden_path = os.path.join(DIR_LABELS, "output18_Leiden_run0.npy")
+    cpce_path = os.path.join(DIR_LABELS, "dataset_7_CPCE_run0.npy")
+    leiden_path = os.path.join(DIR_LABELS, "dataset_7_Leiden_run0.npy")
     
     if not (os.path.exists(cpce_path) and os.path.exists(leiden_path)):
         print("Error: Required clustering result files (.npy) not found. Please run 02_run_main_benchmark.py first.")

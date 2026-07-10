@@ -17,16 +17,16 @@ Dataset 7 (Living Donor Kidney):https://datasets.cellxgene.cziscience.com/a305d1
 
 Important: After downloading, place the .h5ad file into a directory named data/ in the project root and rename it to dataset_1.h5ad.
 
-Your directory structure should look like this before running:
+Your directory structure should look like this before running:  
 
 Plaintext
-├── data/
-│   └── processed/
-│       ├── dataset_5.h5ad
-│       └── dataset_7.h5ad
-├── scripts/
-├── src/
-└── requirements.txt
+├── data/  
+│   └── processed/  
+│       ├── dataset_5.h5ad  
+│       └── dataset_7.h5ad  
+├── scripts/  
+├── src/  
+└── requirements.txt  
 
 Quick Start (Reproduction)
 Please execute the scripts from the root directory of the repository.

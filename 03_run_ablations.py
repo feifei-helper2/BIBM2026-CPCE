@@ -41,13 +41,6 @@ RARE_THRESHOLD = 0.05
 RUNS = 10 
 BASE_SEED = 42
 
-# Mapping physical files to paper display names
-DATASET_MAPPING = {
-    "output3": "Dataset_2",  
-    "output7": "Dataset_4",  
-    "output18": "Dataset_7"  
-}
-
 # Core Ablation Variants (NoGS integrated, avg_link removed)
 VARIANT_MAPPING = {
     'full': 'CPCE_Full',
@@ -74,13 +67,19 @@ def main():
         except Exception:
             pass
 
-    for raw_name, paper_name in DATASET_MAPPING.items():
-        file_path = os.path.join(DIR_DATA, f"{raw_name}.h5ad")
-        if not os.path.exists(file_path):
-            logging.error(f"Error: Dataset missing: {file_path}")
-            continue
+    # Dynamically scan for all .h5ad files in the directory
+    dataset_files = [f for f in os.listdir(DIR_DATA) if f.endswith('.h5ad')]
+    
+    if not dataset_files:
+        logging.error(f"Error: No datasets found in {DIR_DATA}")
+        return
+
+    for file_name in dataset_files:
+        # Remove extension to use as the exact dataset name (e.g., "dataset_5")
+        paper_name = file_name.replace(".h5ad", "")
+        file_path = os.path.join(DIR_DATA, file_name)
             
-        logging.info(f"\nLoading dataset: {paper_name} (Source: {raw_name})")
+        logging.info(f"\nLoading dataset: {paper_name}")
         adata = sc.read_h5ad(file_path)
         X_pca = adata.obsm['X_pca']
         y_true = adata.obs['ground_truth'].values

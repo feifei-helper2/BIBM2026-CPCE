@@ -1,19 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-脚本职责: 主实验全自动化跑批总线 (The Grand Orchestrator)
-核心纪律:
-1. 断点续传: 基于 CSV 和 .npy 的双重断点续传，拒绝重复计算。
-2. 实时刷盘: 采用安全的增量追加 (Append) 模式写入 CSV，防死机清零。
-3. 异常隔离: try-except 彻底覆盖 I/O 与计算报错，保全整体流水线。
-4. 资源控制: O(N^3) 图算法限制单次执行，保障时效性。
+Script: Main Benchmark Orchestrator
+Purpose: Automated batch processing for clustering algorithms across datasets.
+Features:
+1. Breakpoint Resume: Dual resume mechanism based on CSV and .npy to avoid redundant calculations.
+2. Real-time Append: Secure incremental append mode for CSV writing.
+3. Exception Isolation: try-except blocks wrapping I/O and computation to protect pipeline execution.
 """
 import os
-#os.environ["MKL_NUM_THREADS"] = "1"
-#os.environ["NUMEXPR_NUM_THREADS"] = "1"
-#os.environ["OMP_NUM_THREADS"] = "1"
-#os.environ["OPENBLAS_NUM_THREADS"] = "1"
-#os.environ["LOKY_MAX_CPU_COUNT"] = "1"
 import sys
 import glob
 import time
@@ -25,7 +20,7 @@ import scanpy as sc
 from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score
 
 # ==========================================
-# 0. 环境路径对齐与模块挂载
+# 0. Environment Path Alignment and Modules
 # ==========================================
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, PROJECT_ROOT)
@@ -34,7 +29,7 @@ from src.baselines import BaselineModels
 from src.cpce_engine import run_synthesized_cpce
 from src.metrics import calc_rare_class_f1_strict
 
-# 目录基建查缺补漏
+# Directory initialization
 DIR_DATA = os.path.join(PROJECT_ROOT, "data", "processed")
 DIR_TABLES = os.path.join(PROJECT_ROOT, "results", "tables")
 DIR_LABELS = os.path.join(PROJECT_ROOT, "results", "saved_labels")
@@ -43,7 +38,7 @@ DIR_LOGS = os.path.join(PROJECT_ROOT, "logs")
 for d in [DIR_TABLES, DIR_LABELS, DIR_LOGS]:
     os.makedirs(d, exist_ok=True)
 
-# 日志双流监控挂载
+# Dual-stream logging setup
 log_file = os.path.join(DIR_LOGS, "experiment_runtime.log")
 logging.basicConfig(
     level=logging.INFO,
@@ -55,81 +50,81 @@ logging.basicConfig(
 )
 
 # ==========================================
-# 1. 超参数与算法注册表
+# 1. Hyperparameters and Algorithm Registry
 # ==========================================
 GLOBAL_SEED = 42
 RARE_THRESHOLD = 0.05
 OUTPUT_CSV = os.path.join(DIR_TABLES, "main_benchmark_results.csv")
 
 def run_cpce_wrapper(X_pca, K, seed):
-    """为 CPCE 引擎注入动态随机种子，确保稳定性测试真实有效"""
-    # 1. 【全局保底防线】：控制 numpy 的基础随机状态
+    """Inject dynamic random seeds into the CPCE engine for stability testing."""
+    # 1. Global defense: Control numpy's base random state
     np.random.seed(seed) 
     
-    # 2. 【精确参数控流】：控制 sklearn / scanpy 的内部随机状态
+    # 2. Parameter routing: Control sklearn/scanpy internal random states
     return run_synthesized_cpce(X_pca, K, seed=seed)
 
-# 算法黑盒注册表 (统一接口规范: lambda X_pca, K, seed, adata)
+# Algorithm Registry (Unified interface: lambda X_pca, K, seed, adata)
 ALGORITHMS_REGISTRY = {
-    # --- 古典与常规基线 (吞掉 adata) ---
+    # --- Classical and standard baselines ---
     "KMeans": {"func": lambda X, K, s, adata: BaselineModels.run_kmeans(X, K, s), "runs": 10},
     "GMM": {"func": lambda X, K, s, adata: BaselineModels.run_gmm(X, K, s), "runs": 10},
     "Spectral": {"func": lambda X, K, s, adata: BaselineModels.run_spectral(X, K, s), "runs": 10},
     "Leiden": {"func": lambda X, K, s, adata: BaselineModels.run_leiden_with_bisection(X, K, s), "runs": 10},
     
-    # --- 消融实验组 (同批次运行，后续画图再分离) ---
+    # --- Ablation baselines ---
     "Balanced_KMeans": {"func": lambda X, K, s, adata: BaselineModels.run_balanced_kmeans(X, K, s), "runs": 10},
     "Random_Ensemble": {"func": lambda X, K, s, adata: BaselineModels.run_random_ensemble(X, K, s), "runs": 10},
     
-    # --- 前沿与深度 SOTA ---
+    # --- Advanced SOTA models ---
     "scCAD": {"func": lambda X, K, s, adata: BaselineModels.run_sccad(X, adata, K, s), "runs": 10},
     "GiniClust3": {"func": lambda X, K, s, adata: BaselineModels.run_giniclust3(X, adata, K, s), "runs": 10},
     "scVI": {"func": lambda X, K, s, adata: BaselineModels.run_scvi_kmeans(X, adata, K, s), "runs": 10},
     
-    # --- 核心引擎 ---
+    # --- Core Engine ---
     "CPCE": {"func": lambda X, K, s, adata: run_cpce_wrapper(X, K, s), "runs": 10}
 }
 
 # ==========================================
-# 2. 安全原子化落盘组件
+# 2. Atomic Writing Components
 # ==========================================
 def append_result_to_csv(record_dict, csv_path):
-    """安全增量追加，规避 pd.to_csv 全量覆写时的文件损坏风险"""
+    """Secure incremental append to avoid file corruption during full overwrites."""
     df_row = pd.DataFrame([record_dict])
     file_exists = os.path.isfile(csv_path)
     df_row.to_csv(csv_path, mode='a', header=not file_exists, index=False)
 
 def get_completed_tasks(csv_path):
-    """读取历史战报，为行级断点续传提供依据"""
+    """Read historical logs to provide row-level breakpoint resume execution."""
     if os.path.exists(csv_path):
         try:
             df = pd.read_csv(csv_path)
             return set(zip(df['Dataset'], df['Algorithm'], df['Run_ID']))
         except Exception as e:
-            logging.warning(f"⚠️ 读取历史跑分表失败 ({e})，将重头开始计算。")
+            logging.warning(f"Warning: Failed to read historical CSV ({e}). Starting fresh.")
     return set()
 
 # ==========================================
-# 3. 暴君式主引擎总线
+# 3. Main Orchestration Bus
 # ==========================================
 def main():
-    logging.info("🚀 ============ CPCE 主实验跑批总线启动 ============")
+    logging.info("============ CPCE Main Benchmark Pipeline Started ============")
     
     dataset_files = sorted(glob.glob(os.path.join(DIR_DATA, "*.h5ad")))
     if not dataset_files:
-        logging.error(f"❌ 致命错误：未在 {DIR_DATA} 找到标准件！")
+        logging.error(f"Critical Error: No standard datasets found in {DIR_DATA}!")
         return
         
-    logging.info(f"📂 发现 {len(dataset_files)} 个标准数据集。")
+    logging.info(f"Discovered {len(dataset_files)} benchmark datasets.")
     
     completed_tasks = get_completed_tasks(OUTPUT_CSV)
     if completed_tasks:
-        logging.info(f"🔄 检测到 {len(completed_tasks)} 条历史完成记录，激活增量断点续传模式。")
+        logging.info(f"Detected {len(completed_tasks)} historical completion records. Activating incremental resume mode.")
 
-    # [一层] 遍历数据集
+    # [Layer 1] Iterate through datasets
     for file_path in dataset_files:
         dataset_name = os.path.basename(file_path).replace(".h5ad", "")
-        logging.info(f"\n{'-'*60}\n🔬 载入数据集: {dataset_name}\n{'-'*60}")
+        logging.info(f"\n{'-'*60}\nLoading Dataset: {dataset_name}\n{'-'*60}")
         
         try:
             adata = sc.read_h5ad(file_path)
@@ -137,44 +132,44 @@ def main():
             y_true = adata.obs['ground_truth'].values
             K_gt = int(adata.uns['n_clusters_gt'])
             N_cells = X_pca.shape[0]
-            logging.info(f"   ✔️ 物理参数: N={N_cells}, K={K_gt}")
+            logging.info(f"   [Parameters] N={N_cells}, K={K_gt}")
         except Exception as e:
-            logging.error(f"❌ 数据集解析失败，跳过。报错: {e}")
+            logging.error(f"Dataset parsing failed, skipping. Error: {e}")
             continue
 
-        # [二层] 遍历竞争算法
+        # [Layer 2] Iterate through competitor algorithms
         for algo_name, config in ALGORITHMS_REGISTRY.items():
             algo_func = config["func"]
             n_runs = config["runs"]
             
-            # [三层] 稳定性跑批
+            # [Layer 3] Stability batches
             for run_idx in range(n_runs):
                 current_seed = GLOBAL_SEED + run_idx
                 task_fingerprint = (dataset_name, algo_name, run_idx)
                 
-                # 防重机制 1: 行级断点续传
+                # Defense 1: Row-level resume
                 if task_fingerprint in completed_tasks:
                     continue
                     
-                logging.info(f"   ⚔️ 运算中: {algo_name} (Run {run_idx+1}/{n_runs}) ...")
+                logging.info(f"   Executing: {algo_name} (Run {run_idx+1}/{n_runs}) ...")
                 
                 label_save_path = os.path.join(DIR_LABELS, f"{dataset_name}_{algo_name}_run{run_idx}.npy")
                 labels_pred = None
-                exec_time = np.nan  # 初始化为 NaN，防止污染时间均值
+                exec_time = np.nan  
                 
                 start_time = time.time()
                 try:
-                    # 防重机制 2: 资产级断点极速加载
+                    # Defense 2: Asset-level quick load
                     if os.path.exists(label_save_path):
-                        logging.info(f"      ⏭️ [资产续传] 已命中本地标签文件，跳过聚类计算。")
+                        logging.info(f"      [Asset Load] Target .npy file found locally. Skipping computation.")
                         labels_pred = np.load(label_save_path)
                     else:
-                        # 真实计算执行
+                        # True execution
                         labels_pred = algo_func(X_pca, K_gt, current_seed, adata)
                         exec_time = time.time() - start_time
                         np.save(label_save_path, labels_pred)
                         
-                    # 指标核算一并纳入 try-except，防止坏账 .npy 导致报错崩溃
+                    # Encapsulate metric calculation within try-except
                     ari = adjusted_rand_score(y_true, labels_pred)
                     nmi = normalized_mutual_info_score(y_true, labels_pred)
                     rare_metrics = calc_rare_class_f1_strict(y_true, labels_pred, RARE_THRESHOLD)
@@ -186,20 +181,19 @@ def main():
 
                     status = "Success"
                     time_log = f"{exec_time:.1f}s" if pd.notna(exec_time) else "Cached"
-                    logging.info(f"      ✅ 完成 | Time: {time_log} | ARI: {ari:.3f} | Geo_F1: {soft_geo_f1:.3f} | Det_Rate: {detection_rate:.2f}")
+                    logging.info(f"      [Success] Time: {time_log} | ARI: {ari:.3f} | Geo_F1: {soft_geo_f1:.3f} | Det_Rate: {detection_rate:.2f}")
                     
                 except Exception as e:
                     if np.isnan(exec_time):
                         exec_time = time.time() - start_time
                     error_msg = str(e).split('\n')[0]
-                    logging.error(f"      💥 [熔断] {error_msg}")
+                    logging.error(f"      [Aborted] {error_msg}")
                     
                     ari, nmi, rare_f1 = np.nan, np.nan, np.nan
                     status = f"Failed: {error_msg}"
                     mean_f1 = soft_geo_f1 = detection_rate = median_f1 = q1_f1 = np.nan
-                    status = f"Failed: {error_msg}"
 
-                # 原子落库
+                # Atomic record dump
                 record = {
                     "Dataset": dataset_name,
                     "Algorithm": algo_name,
@@ -220,8 +214,8 @@ def main():
                 
                 append_result_to_csv(record, OUTPUT_CSV)
 
-    logging.info(f"\n🎉 ============ 跑批任务圆满收官 ============")
-    logging.info(f"📄 汇总大表已落地: {OUTPUT_CSV}")
+    logging.info(f"\n============ Batch Execution Completed ============")
+    logging.info(f"Aggregated results saved to: {OUTPUT_CSV}")
 
 if __name__ == "__main__":
     import warnings
